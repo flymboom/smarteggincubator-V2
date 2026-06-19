@@ -3,9 +3,9 @@ import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB31u_oDgwW7fNTq0VvU0PXIEXhdfZpcbg",
-  authDomain: "smart-egg-incubator-e011f.firebaseapp.com",
-  databaseURL: "https://smart-egg-incubator-e011f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  apiKey: "AIzaSyCE7tNn6yBZB-_XybqMcRwoSuIek27eb7U",
+  authDomain: "smarteggincubator-v2.firebaseapp.com",
+  databaseURL: "https://smarteggincubator-v2-default-rtdb.asia-southeast1.firebasedatabase.app",
 };
 
 const app = initializeApp(firebaseConfig);
