@@ -1,0 +1,5 @@
+allowBuilds:
+  '@firebase/util': true
+  protobufjs: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.20.0
