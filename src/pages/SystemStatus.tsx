@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../lib/firebase';
-import { Thermometer, DoorClosed, Lightbulb, Flame } from 'lucide-react';
+import { Thermometer, DoorClosed, DoorOpened, Lightbulb, Flame } from 'lucide-react';
 
 interface SensorData {
   sht31: string;
@@ -25,6 +25,9 @@ export function SystemStatus() {
     return () => unsubscribe();
   }, []);
 
+const isDoorOpen = data?.door?.toLowerCase() === 'opened' || data?.door?.toLowerCase() === 'open';
+const isShtConnected = data?.sht31?.toLowerCase() === 'connected';
+  
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden overflow-x-auto transition-colors">
@@ -42,7 +45,7 @@ export function SystemStatus() {
                 SHT31 Sensor
               </td>
               <td className="px-4 sm:px-6 py-3 sm:py-4">
-                {data?.sht31 === 'Connected' ? (
+                {isShtConnected ? (
                   <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500">Connected</span>
                 ) : (
                   <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-500">Disconnected</span>
@@ -51,12 +54,16 @@ export function SystemStatus() {
             </tr>
             <tr className="hover:bg-gray-50 dark:hover:bg-transparent transition-colors">
               <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base text-gray-900 dark:text-white flex items-center gap-2 sm:gap-3 transition-colors">
-                <DoorClosed className="w-5 h-5 text-gray-500 dark:text-gray-400 transition-colors" />
+                {isDoorOpen ? (
+                  <DoorOpen className="w-5 h-5 text-gray-500 dark:text-gray-400 transition-colors" />
+                ) : (
+                  <DoorClosed className="w-5 h-5 text-gray-500 dark:text-gray-400 transition-colors" />
+                )}
                 Door Status
               </td>
               <td className="px-4 sm:px-6 py-3 sm:py-4">
-                {data?.door === 'Open' ? (
-                  <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-500">Open</span>
+                {isDoorOpen ? (
+                  <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-500">Opened</span>
                 ) : (
                   <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500">Closed</span>
                 )}
