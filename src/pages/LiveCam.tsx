@@ -28,18 +28,17 @@ export function LiveCam() {
 
   useEffect(() => {
     // Unconditional MQTT connection for LWT status and frames
-    const client = mqtt.connect("wss://test.mosquitto.org:8081/mqtt");
+    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
     mqttClientRef.current = client;
 
     let statusTimeout: NodeJS.Timeout;
 
     client.on("connect", () => {
-      console.log("Connected to Mosquitto Public Broker");
+      console.log("Connected to EMQX Public Broker");
       client.subscribe("smart-egg-incubator/cam/status");
       client.subscribe("smart-egg-incubator/cam/frame/7x9Qz2pL4mK8wR5v");
 
       // If no status message is received within 3 seconds, assume offline
-      // (Mosquitto public broker often drops retained messages)
       statusTimeout = setTimeout(() => {
         setIsOnline((prev) => (prev === null ? false : prev));
       }, 3000);
