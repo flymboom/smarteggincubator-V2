@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../lib/firebase';
-import { Thermometer, DoorClosed, DoorOpened, Lightbulb, Flame } from 'lucide-react';
+import { Thermometer, DoorClosed, DoorOpen, Lightbulb, Flame } from 'lucide-react';
 
 interface SensorData {
   sht31: string;
