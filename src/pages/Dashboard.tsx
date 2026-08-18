@@ -158,31 +158,38 @@ export function Dashboard() {
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
-        dataRef.current = val;
-        setData(val);
-        lastUpdateRef.current = Date.now();
-        if (!isConnectedRef.current) {
-          setIsConnected(true);
-          isConnectedRef.current = true;
-        }
+        if (dataRef.current === null) {
+          // First snapshot on page load (stored Firebase database data)
+          // Store reference, but DO NOT mark connected until uptime increments!
+          dataRef.current = val;
+        } else if (val.uptime !== dataRef.current.uptime) {
+          // Device is actively running and updating right now!
+          dataRef.current = val;
+          setData(val);
+          lastUpdateRef.current = Date.now();
+          if (!isConnectedRef.current) {
+            setIsConnected(true);
+            isConnectedRef.current = true;
+          }
 
-        // Record new sensor reading
-        const temp = typeof val.temperature === "number" ? val.temperature : 0;
-        const hum = typeof val.humidity === "number" ? val.humidity : 0;
-        
-        if (temp > 0 || hum > 0) {
-          const now = Date.now();
-          readingsRef.current.push({
-            timestamp: now,
-            temperature: temp,
-            humidity: hum,
-          });
+          // Record new sensor reading
+          const temp = typeof val.temperature === "number" ? val.temperature : 0;
+          const hum = typeof val.humidity === "number" ? val.humidity : 0;
+          
+          if (temp > 0 || hum > 0) {
+            const now = Date.now();
+            readingsRef.current.push({
+              timestamp: now,
+              temperature: temp,
+              humidity: hum,
+            });
 
-          // Keep only the past 5 minutes of readings and persist
-          const fiveMinutesAgo = now - WINDOW_MS;
-          readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
-          saveReadings(readingsRef.current);
-          setChartData(buildFiveMinuteChartData(readingsRef.current));
+            // Keep only the past 5 minutes of readings and persist
+            const fiveMinutesAgo = now - WINDOW_MS;
+            readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+            saveReadings(readingsRef.current);
+            setChartData(buildFiveMinuteChartData(readingsRef.current));
+          }
         }
       }
     });
@@ -190,12 +197,11 @@ export function Dashboard() {
     // Connection timeout monitor
     const connectionMonitor = setInterval(() => {
       if (isConnectedRef.current && Date.now() - lastUpdateRef.current > 5000) {
-        // Device is offline
+        // Device was connected, but stopped sending updates -> went offline
         setIsConnected(false);
         isConnectedRef.current = false;
         
         setData(null);
-        dataRef.current = null;
 
         // Record 0 drop when device disconnects
         readingsRef.current.push({
