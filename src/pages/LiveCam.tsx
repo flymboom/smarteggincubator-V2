@@ -60,7 +60,9 @@ export function LiveCam() {
     client.on("message", (topic, message) => {
       if (topic === "smart-egg-incubator/cam/status") {
         const status = message.toString();
-        if (status === "offline") {
+        if (status === "online") {
+          resetWatchdog();
+        } else if (status === "offline") {
           setIsOnline(false);
           if (frameWatchdog) clearTimeout(frameWatchdog);
           setFrameUrl((prevUrl) => {
