@@ -36,14 +36,14 @@ export function LiveCam() {
     const resetWatchdog = () => {
       if (frameWatchdog) clearTimeout(frameWatchdog);
       setIsOnline(true);
-      // If no new frames or heartbeats arrive for 8 seconds, mark as offline
+      // If no new frames or heartbeats arrive for 6 seconds, mark as offline
       frameWatchdog = setTimeout(() => {
         setIsOnline(false);
         setFrameUrl((prevUrl) => {
           if (prevUrl) URL.revokeObjectURL(prevUrl);
           return null;
         });
-      }, 8000);
+      }, 6000);
     };
 
     client.on("connect", () => {
@@ -51,24 +51,17 @@ export function LiveCam() {
       client.subscribe("smart-egg-incubator/cam/status");
       client.subscribe("smart-egg-incubator/cam/frame/7x9Qz2pL4mK8wR5v");
 
-      // Initial state timeout: if no frame or heartbeat arrives within 6s, set offline
+      // Initial state timeout: if no frame or heartbeat arrives within 5s, set offline
       frameWatchdog = setTimeout(() => {
         setIsOnline(false);
-      }, 6000);
+      }, 5000);
     });
 
     client.on("message", (topic, message) => {
       if (topic === "smart-egg-incubator/cam/status") {
-        const status = message.toString();
+        const status = message.toString().trim();
         if (status === "online") {
           resetWatchdog();
-        } else if (status === "offline") {
-          setIsOnline(false);
-          if (frameWatchdog) clearTimeout(frameWatchdog);
-          setFrameUrl((prevUrl) => {
-            if (prevUrl) URL.revokeObjectURL(prevUrl);
-            return null;
-          });
         }
       } else if (topic === "smart-egg-incubator/cam/frame/7x9Qz2pL4mK8wR5v") {
         resetWatchdog();
