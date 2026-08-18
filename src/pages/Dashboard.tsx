@@ -93,8 +93,8 @@ function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
     result.push({
       time: timeLabel,
       clockTime: clockTime,
-      temperature: closestReading ? closestReading.temperature : null,
-      humidity: closestReading ? closestReading.humidity : null,
+      temperature: closestReading ? closestReading.temperature : 0,
+      humidity: closestReading ? closestReading.humidity : 0,
     });
   }
 
@@ -145,19 +145,17 @@ export function Dashboard() {
           const temp = typeof val.temperature === "number" ? val.temperature : 0;
           const hum = typeof val.humidity === "number" ? val.humidity : 0;
           
-          if (temp > 0 || hum > 0) {
-            const now = Date.now();
-            readingsRef.current.push({
-              timestamp: now,
-              temperature: temp,
-              humidity: hum,
-            });
+          const now = Date.now();
+          readingsRef.current.push({
+            timestamp: now,
+            temperature: temp,
+            humidity: hum,
+          });
 
-            // Keep only the past 5 minutes of readings
-            const fiveMinutesAgo = now - WINDOW_MS;
-            readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
-            setChartData(buildFiveMinuteChartData(readingsRef.current));
-          }
+          // Keep only the past 5 minutes of readings
+          const fiveMinutesAgo = now - WINDOW_MS;
+          readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+          setChartData(buildFiveMinuteChartData(readingsRef.current));
         }
       }
     });
@@ -169,11 +167,16 @@ export function Dashboard() {
         setIsConnected(false);
         isConnectedRef.current = false;
         
-        // Clear data
-
-
         setData(null);
         dataRef.current = null;
+
+        // Record 0 drop when device disconnects
+        readingsRef.current.push({
+          timestamp: Date.now(),
+          temperature: 0,
+          humidity: 0,
+        });
+        setChartData(buildFiveMinuteChartData(readingsRef.current));
       }
     }, 1000);
 
@@ -400,8 +403,7 @@ export function Dashboard() {
                   interval={0}
                 />
                 <YAxis
-                  domain={[0, 50]}
-                  ticks={[0, 10, 20, 30, 40, 50]}
+                  domain={['auto', 'auto']}
                   stroke="rgb(156, 163, 175)"
                   tick={{ fill: "rgb(156, 163, 175)" }}
                 />
@@ -428,7 +430,6 @@ export function Dashboard() {
                   stroke="rgb(239, 68, 68)"
                   strokeWidth={2}
                   dot={false}
-                  connectNulls={true}
                   activeDot={{ r: 5 }}
                 />
               </LineChart>
@@ -468,8 +469,7 @@ export function Dashboard() {
                   interval={0}
                 />
                 <YAxis
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
+                  domain={['auto', 'auto']}
                   stroke="rgb(156, 163, 175)"
                   tick={{ fill: "rgb(156, 163, 175)" }}
                 />
