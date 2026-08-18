@@ -31,23 +31,46 @@ export function LiveCam() {
     const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
     mqttClientRef.current = client;
 
-    let statusTimeout: NodeJS.Timeout;
+    let frameWatchdog: NodeJS.Timeout | null = null;
+
+    const resetWatchdog = () => {
+      if (frameWatchdog) clearTimeout(frameWatchdog);
+      setIsOnline(true);
+      // If no new frames arrive for 4 seconds, mark as offline
+      frameWatchdog = setTimeout(() => {
+        setIsOnline(false);
+        setFrameUrl((prevUrl) => {
+          if (prevUrl) URL.revokeObjectURL(prevUrl);
+          return null;
+        });
+      }, 4000);
+    };
 
     client.on("connect", () => {
       console.log("Connected to EMQX Public Broker");
       client.subscribe("smart-egg-incubator/cam/status");
       client.subscribe("smart-egg-incubator/cam/frame/7x9Qz2pL4mK8wR5v");
 
-      // If no status message is received within 3 seconds, assume offline
-      statusTimeout = setTimeout(() => {
-        setIsOnline((prev) => (prev === null ? false : prev));
-      }, 3000);
+      // Initial state timeout: if no frame arrives within 3.5s, set offline
+      frameWatchdog = setTimeout(() => {
+        setIsOnline(false);
+      }, 3500);
     });
 
     client.on("message", (topic, message) => {
       if (topic === "smart-egg-incubator/cam/status") {
-        setIsOnline(message.toString() === "online");
+        const status = message.toString();
+        if (status === "offline") {
+          setIsOnline(false);
+          if (frameWatchdog) clearTimeout(frameWatchdog);
+          setFrameUrl((prevUrl) => {
+            if (prevUrl) URL.revokeObjectURL(prevUrl);
+            return null;
+          });
+        }
       } else if (topic === "smart-egg-incubator/cam/frame/7x9Qz2pL4mK8wR5v") {
+        resetWatchdog();
+
         const blob = new Blob([new Uint8Array(message)], {
           type: "image/jpeg",
         });
@@ -75,7 +98,7 @@ export function LiveCam() {
     });
 
     return () => {
-      clearTimeout(statusTimeout);
+      if (frameWatchdog) clearTimeout(frameWatchdog);
       unsubscribeControls();
       client.end();
       setFrameUrl((prevUrl) => {
