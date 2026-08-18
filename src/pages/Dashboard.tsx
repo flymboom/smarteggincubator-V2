@@ -59,6 +59,12 @@ function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
   for (let i = 0; i < TOTAL_POINTS; i++) {
     const slotTime = startTime + i * step;
     
+    const hhmm = new Date(slotTime).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
     const clockTime = new Date(slotTime).toLocaleTimeString("en-US", {
       hour12: false,
       hour: "2-digit",
@@ -66,10 +72,10 @@ function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
       second: "2-digit",
     });
 
-    // Show exact time markers at 1-minute intervals across the 5-minute window
+    // Show exact HH:mm markers at 1-minute intervals across the 5-minute window
     let timeLabel = "";
     if (i % 6 === 0 || i === TOTAL_POINTS - 1) {
-      timeLabel = clockTime;
+      timeLabel = hhmm;
     }
 
     // Find the closest reading to this slot time within ±10 seconds
