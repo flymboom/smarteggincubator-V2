@@ -50,6 +50,32 @@ interface ChartDataPoint {
 const TOTAL_POINTS = 31; // 31 points (one every 10s over 5 minutes)
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
+const STORAGE_KEY = "incubator_readings_history";
+
+function loadStoredReadings(): SensorReading[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed: SensorReading[] = JSON.parse(saved);
+      const fiveMinutesAgo = Date.now() - WINDOW_MS;
+      return parsed.filter((r) => r.timestamp >= fiveMinutesAgo && typeof r.temperature === "number");
+    }
+  } catch (e) {
+    console.error("Failed to load stored readings:", e);
+  }
+  return [];
+}
+
+function saveReadings(readings: SensorReading[]) {
+  try {
+    const fiveMinutesAgo = Date.now() - WINDOW_MS;
+    const valid = readings.filter((r) => r.timestamp >= fiveMinutesAgo);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
+  } catch (e) {
+    // Ignore storage quota errors
+  }
+}
+
 function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
   const now = Math.floor(Date.now() / 1000) * 1000;
   const startTime = now - WINDOW_MS;
@@ -78,13 +104,13 @@ function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
       timeLabel = hhmm;
     }
 
-    // Find the closest reading to this slot time within ±10 seconds
+    // Find the closest reading to this slot time within ±25 seconds
     let closestReading: SensorReading | null = null;
     let minDiff = Infinity;
 
     for (const r of readings) {
       const diff = Math.abs(r.timestamp - slotTime);
-      if (diff < minDiff && diff <= 15000) {
+      if (diff < minDiff && diff <= 30000) {
         minDiff = diff;
         closestReading = r;
       }
@@ -111,8 +137,9 @@ export function Dashboard() {
   const [flashOn, setFlashOn] = useState(false);
   const [heaterOn, setHeaterOn] = useState(true);
 
-  const readingsRef = useRef<SensorReading[]>([]);
-  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => buildFiveMinuteChartData([]));
+  const [readingsHistory] = useState<SensorReading[]>(() => loadStoredReadings());
+  const readingsRef = useRef<SensorReading[]>(readingsHistory);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => buildFiveMinuteChartData(readingsHistory));
 
   const [motorInterval, setMotorInterval] = useState("30");
   const [isTriggering, setIsTriggering] = useState(false);
@@ -122,6 +149,7 @@ export function Dashboard() {
     const chartInterval = setInterval(() => {
       const fiveMinutesAgo = Date.now() - WINDOW_MS;
       readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+      saveReadings(readingsRef.current);
       setChartData(buildFiveMinuteChartData(readingsRef.current));
     }, 5000);
 
@@ -130,21 +158,19 @@ export function Dashboard() {
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
-        if (dataRef.current === null) {
-          dataRef.current = val;
-        } else if (val.uptime !== dataRef.current.uptime) {
-          dataRef.current = val;
-          setData(val);
-          lastUpdateRef.current = Date.now();
-          if (!isConnectedRef.current) {
-            setIsConnected(true);
-            isConnectedRef.current = true;
-          }
+        dataRef.current = val;
+        setData(val);
+        lastUpdateRef.current = Date.now();
+        if (!isConnectedRef.current) {
+          setIsConnected(true);
+          isConnectedRef.current = true;
+        }
 
-          // Record new sensor reading
-          const temp = typeof val.temperature === "number" ? val.temperature : 0;
-          const hum = typeof val.humidity === "number" ? val.humidity : 0;
-          
+        // Record new sensor reading
+        const temp = typeof val.temperature === "number" ? val.temperature : 0;
+        const hum = typeof val.humidity === "number" ? val.humidity : 0;
+        
+        if (temp > 0 || hum > 0) {
           const now = Date.now();
           readingsRef.current.push({
             timestamp: now,
@@ -152,9 +178,10 @@ export function Dashboard() {
             humidity: hum,
           });
 
-          // Keep only the past 5 minutes of readings
+          // Keep only the past 5 minutes of readings and persist
           const fiveMinutesAgo = now - WINDOW_MS;
           readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+          saveReadings(readingsRef.current);
           setChartData(buildFiveMinuteChartData(readingsRef.current));
         }
       }
@@ -176,6 +203,7 @@ export function Dashboard() {
           temperature: 0,
           humidity: 0,
         });
+        saveReadings(readingsRef.current);
         setChartData(buildFiveMinuteChartData(readingsRef.current));
       }
     }, 1000);
@@ -258,8 +286,13 @@ export function Dashboard() {
       .filter((r) => r.timestamp >= fiveMinutesAgo && typeof r[key] === "number" && r[key] > 0)
       .map((r) => r[key]);
 
-    if (recentReadings.length === 0)
+    if (recentReadings.length === 0) {
+      if (data && typeof data[key] === "number" && data[key] > 0) {
+        const fallback = data[key].toFixed(1);
+        return { min: fallback, max: fallback, avg: fallback };
+      }
       return { min: "0.0", max: "0.0", avg: "0.0" };
+    }
 
     const min = Math.min(...recentReadings).toFixed(1);
     const max = Math.max(...recentReadings).toFixed(1);
