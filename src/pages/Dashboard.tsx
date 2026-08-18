@@ -51,7 +51,7 @@ const TOTAL_POINTS = 31; // 31 points (one every 10s over 5 minutes)
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 1000) * 1000;
   const startTime = now - WINDOW_MS;
   const step = WINDOW_MS / (TOTAL_POINTS - 1);
   const result: ChartDataPoint[] = [];
@@ -59,21 +59,18 @@ function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
   for (let i = 0; i < TOTAL_POINTS; i++) {
     const slotTime = startTime + i * step;
     
-    // Clean static markers on X-Axis at 1-minute intervals
-    let timeLabel = "";
-    if (i === 0) timeLabel = "-5m";
-    else if (i === 6) timeLabel = "-4m";
-    else if (i === 12) timeLabel = "-3m";
-    else if (i === 18) timeLabel = "-2m";
-    else if (i === 24) timeLabel = "-1m";
-    else if (i === TOTAL_POINTS - 1) timeLabel = "Now";
-
     const clockTime = new Date(slotTime).toLocaleTimeString("en-US", {
       hour12: false,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
+
+    // Show exact time markers at 1-minute intervals across the 5-minute window
+    let timeLabel = "";
+    if (i % 6 === 0 || i === TOTAL_POINTS - 1) {
+      timeLabel = clockTime;
+    }
 
     // Find the closest reading to this slot time within ±10 seconds
     let closestReading: SensorReading | null = null;
@@ -408,7 +405,7 @@ export function Dashboard() {
                       const val = payload[0].value;
                       return (
                         <div className="bg-gray-900 border border-gray-700 p-2.5 rounded-lg shadow-lg text-xs">
-                          <p className="text-gray-400 mb-1">{pt.clockTime} {pt.time ? `(${pt.time})` : ""}</p>
+                          <p className="text-gray-400 mb-1">{pt.clockTime}</p>
                           <p className="font-semibold text-red-400">
                             Temperature: {typeof val === "number" ? val.toFixed(1) : "--"} °C
                           </p>
@@ -475,7 +472,7 @@ export function Dashboard() {
                       const val = payload[0].value;
                       return (
                         <div className="bg-gray-900 border border-gray-700 p-2.5 rounded-lg shadow-lg text-xs">
-                          <p className="text-gray-400 mb-1">{pt.clockTime} {pt.time ? `(${pt.time})` : ""}</p>
+                          <p className="text-gray-400 mb-1">{pt.clockTime}</p>
                           <p className="font-semibold text-blue-400">
                             Humidity: {typeof val === "number" ? val.toFixed(1) : "--"} %
                           </p>
