@@ -34,10 +34,68 @@ interface SensorData {
   heaterMaster: boolean;
 }
 
-interface ChartDataPoint {
-  time: string;
+interface SensorReading {
+  timestamp: number;
   temperature: number;
   humidity: number;
+}
+
+interface ChartDataPoint {
+  time: string;
+  clockTime: string;
+  temperature: number | null;
+  humidity: number | null;
+}
+
+const TOTAL_POINTS = 31; // 31 points (one every 10s over 5 minutes)
+const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+function buildFiveMinuteChartData(readings: SensorReading[]): ChartDataPoint[] {
+  const now = Date.now();
+  const startTime = now - WINDOW_MS;
+  const step = WINDOW_MS / (TOTAL_POINTS - 1);
+  const result: ChartDataPoint[] = [];
+
+  for (let i = 0; i < TOTAL_POINTS; i++) {
+    const slotTime = startTime + i * step;
+    
+    // Clean static markers on X-Axis at 1-minute intervals
+    let timeLabel = "";
+    if (i === 0) timeLabel = "-5m";
+    else if (i === 6) timeLabel = "-4m";
+    else if (i === 12) timeLabel = "-3m";
+    else if (i === 18) timeLabel = "-2m";
+    else if (i === 24) timeLabel = "-1m";
+    else if (i === TOTAL_POINTS - 1) timeLabel = "Now";
+
+    const clockTime = new Date(slotTime).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    // Find the closest reading to this slot time within ±10 seconds
+    let closestReading: SensorReading | null = null;
+    let minDiff = Infinity;
+
+    for (const r of readings) {
+      const diff = Math.abs(r.timestamp - slotTime);
+      if (diff < minDiff && diff <= 15000) {
+        minDiff = diff;
+        closestReading = r;
+      }
+    }
+
+    result.push({
+      time: timeLabel,
+      clockTime: clockTime,
+      temperature: closestReading ? closestReading.temperature : null,
+      humidity: closestReading ? closestReading.humidity : null,
+    });
+  }
+
+  return result;
 }
 
 export function Dashboard() {
@@ -50,39 +108,28 @@ export function Dashboard() {
   const [flashOn, setFlashOn] = useState(false);
   const [heaterOn, setHeaterOn] = useState(true);
 
-  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => {
-    const initial: ChartDataPoint[] = [];
-    const now = Date.now();
-    for (let i = 19; i >= 0; i--) {
-      initial.push({
-        time: new Date(now - i * 3000).toLocaleTimeString("en-US", {
-          hour12: false,
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-        temperature: 0,
-        humidity: 0,
-      });
-    }
-    return initial;
-  });
+  const readingsRef = useRef<SensorReading[]>([]);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => buildFiveMinuteChartData([]));
 
   const [motorInterval, setMotorInterval] = useState("30");
   const [isTriggering, setIsTriggering] = useState(false);
 
   useEffect(() => {
+    // Periodic chart refresh to keep the 5-minute sliding window aligned
+    const chartInterval = setInterval(() => {
+      const fiveMinutesAgo = Date.now() - WINDOW_MS;
+      readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+      setChartData(buildFiveMinuteChartData(readingsRef.current));
+    }, 5000);
+
     // Subscribe to sensors
     const sensorRef = ref(db, "incubator/sensors");
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
         if (dataRef.current === null) {
-          // First payload (cached or initial fetch)
-          // We store it but don't trust it's online until we see it change!
           dataRef.current = val;
         } else if (val.uptime !== dataRef.current.uptime) {
-          // Data is actively changing, device is definitely online
           dataRef.current = val;
           setData(val);
           lastUpdateRef.current = Date.now();
@@ -91,25 +138,23 @@ export function Dashboard() {
             isConnectedRef.current = true;
           }
 
-          // Update chart
-          const timeStr = new Date().toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-          setChartData((prev) => {
-            const newData = [
-              ...prev,
-              {
-                time: timeStr,
-                temperature: val.temperature || 0,
-                humidity: val.humidity || 0,
-              },
-            ];
-            if (newData.length > 20) newData.shift();
-            return newData;
-          });
+          // Record new sensor reading
+          const temp = typeof val.temperature === "number" ? val.temperature : 0;
+          const hum = typeof val.humidity === "number" ? val.humidity : 0;
+          
+          if (temp > 0 || hum > 0) {
+            const now = Date.now();
+            readingsRef.current.push({
+              timestamp: now,
+              temperature: temp,
+              humidity: hum,
+            });
+
+            // Keep only the past 5 minutes of readings
+            const fiveMinutesAgo = now - WINDOW_MS;
+            readingsRef.current = readingsRef.current.filter((r) => r.timestamp >= fiveMinutesAgo);
+            setChartData(buildFiveMinuteChartData(readingsRef.current));
+          }
         }
       }
     });
@@ -151,6 +196,7 @@ export function Dashboard() {
     });
 
     return () => {
+      clearInterval(chartInterval);
       clearInterval(connectionMonitor);
       unsubscribeSensors();
       unsubscribeFlash();
@@ -201,12 +247,17 @@ export function Dashboard() {
   };
 
   const calculateStats = (key: "temperature" | "humidity") => {
-    if (chartData.length === 0)
+    const fiveMinutesAgo = Date.now() - WINDOW_MS;
+    const recentReadings = readingsRef.current
+      .filter((r) => r.timestamp >= fiveMinutesAgo && typeof r[key] === "number" && r[key] > 0)
+      .map((r) => r[key]);
+
+    if (recentReadings.length === 0)
       return { min: "0.0", max: "0.0", avg: "0.0" };
-    const values = chartData.map((d) => d[key]);
-    const min = Math.min(...values).toFixed(1);
-    const max = Math.max(...values).toFixed(1);
-    const avg = (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+
+    const min = Math.min(...recentReadings).toFixed(1);
+    const max = Math.max(...recentReadings).toFixed(1);
+    const avg = (recentReadings.reduce((a, b) => a + b, 0) / recentReadings.length).toFixed(1);
     return { min, max, avg };
   };
 
@@ -325,7 +376,7 @@ export function Dashboard() {
                 Max: <strong className="text-gray-900 dark:text-white transition-colors">{tempStats.max}</strong>
               </span>
               <span>
-                Avg: <strong className="text-gray-900 dark:text-white transition-colors">{tempStats.avg}</strong>
+                Avg (5m): <strong className="text-gray-900 dark:text-white transition-colors">{tempStats.avg}</strong>
               </span>
             </div>
           </div>
@@ -342,18 +393,29 @@ export function Dashboard() {
                 <XAxis
                   dataKey="time"
                   stroke="rgb(156, 163, 175)"
-                  tick={{ fill: "rgb(156, 163, 175)" }}
+                  tick={{ fill: "rgb(156, 163, 175)", fontSize: 12 }}
+                  interval={0}
                 />
                 <YAxis
-                  domain={[0, 100]}
+                  domain={[20, 50]}
                   stroke="rgb(156, 163, 175)"
                   tick={{ fill: "rgb(156, 163, 175)" }}
                 />
                 <Tooltip
-                  formatter={(value: number) => value.toFixed(2)}
-                  contentStyle={{
-                    backgroundColor: "rgb(31, 41, 55)",
-                    borderColor: "rgb(55, 65, 81)",
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const pt = payload[0].payload as ChartDataPoint;
+                      const val = payload[0].value;
+                      return (
+                        <div className="bg-gray-900 border border-gray-700 p-2.5 rounded-lg shadow-lg text-xs">
+                          <p className="text-gray-400 mb-1">{pt.clockTime} {pt.time ? `(${pt.time})` : ""}</p>
+                          <p className="font-semibold text-red-400">
+                            Temperature: {typeof val === "number" ? val.toFixed(1) : "--"} °C
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
                 <Line
@@ -362,7 +424,8 @@ export function Dashboard() {
                   stroke="rgb(239, 68, 68)"
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 6 }}
+                  connectNulls={true}
+                  activeDot={{ r: 5 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -380,7 +443,7 @@ export function Dashboard() {
                 Max: <strong className="text-gray-900 dark:text-white transition-colors">{humStats.max}</strong>
               </span>
               <span>
-                Avg: <strong className="text-gray-900 dark:text-white transition-colors">{humStats.avg}</strong>
+                Avg (5m): <strong className="text-gray-900 dark:text-white transition-colors">{humStats.avg}</strong>
               </span>
             </div>
           </div>
@@ -397,7 +460,8 @@ export function Dashboard() {
                 <XAxis
                   dataKey="time"
                   stroke="rgb(156, 163, 175)"
-                  tick={{ fill: "rgb(156, 163, 175)" }}
+                  tick={{ fill: "rgb(156, 163, 175)", fontSize: 12 }}
+                  interval={0}
                 />
                 <YAxis
                   domain={[0, 100]}
@@ -405,10 +469,20 @@ export function Dashboard() {
                   tick={{ fill: "rgb(156, 163, 175)" }}
                 />
                 <Tooltip
-                  formatter={(value: number) => value.toFixed(2)}
-                  contentStyle={{
-                    backgroundColor: "rgb(31, 41, 55)",
-                    borderColor: "rgb(55, 65, 81)",
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const pt = payload[0].payload as ChartDataPoint;
+                      const val = payload[0].value;
+                      return (
+                        <div className="bg-gray-900 border border-gray-700 p-2.5 rounded-lg shadow-lg text-xs">
+                          <p className="text-gray-400 mb-1">{pt.clockTime} {pt.time ? `(${pt.time})` : ""}</p>
+                          <p className="font-semibold text-blue-400">
+                            Humidity: {typeof val === "number" ? val.toFixed(1) : "--"} %
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
                 <Line
@@ -417,7 +491,8 @@ export function Dashboard() {
                   stroke="rgb(59, 130, 246)"
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 6 }}
+                  connectNulls={true}
+                  activeDot={{ r: 5 }}
                 />
               </LineChart>
             </ResponsiveContainer>
