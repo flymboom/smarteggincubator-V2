@@ -400,8 +400,8 @@ export function Dashboard() {
                   interval={0}
                 />
                 <YAxis
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
+                  domain={[0, 50]}
+                  ticks={[0, 10, 20, 30, 40, 50]}
                   stroke="rgb(156, 163, 175)"
                   tick={{ fill: "rgb(156, 163, 175)" }}
                 />
